@@ -58,9 +58,11 @@ public class SerialTestActivity extends AppCompatActivity implements SerialInput
         scrollView = findViewById(R.id.scrollView);
         Button ledOnButton = findViewById(R.id.ledOnButton);
         Button ledOffButton = findViewById(R.id.ledOffButton);
+        Button reconnectButton = findViewById(R.id.reconnectButton);
 
         ledOnButton.setOnClickListener(v -> sendCommand("LED_ON"));
         ledOffButton.setOnClickListener(v -> sendCommand("LED_OFF"));
+        reconnectButton.setOnClickListener(v -> reconnect());
 
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
 
@@ -71,6 +73,12 @@ public class SerialTestActivity extends AppCompatActivity implements SerialInput
             registerReceiver(usbReceiver, filter);
         }
 
+        connect();
+    }
+
+    private void reconnect() {
+        log("Reconnecting...");
+        closePort();
         connect();
     }
 
@@ -85,8 +93,11 @@ public class SerialTestActivity extends AppCompatActivity implements SerialInput
         UsbDevice device = driver.getDevice();
 
         if (!usbManager.hasPermission(device)) {
+            Intent intent = new Intent(ACTION_USB_PERMISSION);
+            intent.setPackage(getPackageName());
+
             int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
-            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), flags);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, intent, flags);
             usbManager.requestPermission(device, pendingIntent);
         } else {
             openPort();
@@ -112,6 +123,19 @@ public class SerialTestActivity extends AppCompatActivity implements SerialInput
         }
     }
 
+    private void closePort() {
+        if (ioManager != null) {
+            ioManager.stop();
+            ioManager = null;
+        }
+        if (port != null) {
+            try {
+                port.close();
+            } catch (IOException ignored) {}
+            port = null;
+        }
+    }
+
     private void sendCommand(String command) {
         if (port == null) {
             log("Not connected");
@@ -133,7 +157,10 @@ public class SerialTestActivity extends AppCompatActivity implements SerialInput
 
     @Override
     public void onRunError(Exception e) {
-        runOnUiThread(() -> log("Run error: " + e.getMessage()));
+        runOnUiThread(() -> {
+            log("Connection lost: " + e.getMessage());
+            closePort();
+        });
     }
 
     private void log(String message) {
@@ -145,11 +172,6 @@ public class SerialTestActivity extends AppCompatActivity implements SerialInput
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(usbReceiver);
-        if (ioManager != null) ioManager.stop();
-        if (port != null) {
-            try {
-                port.close();
-            } catch (IOException ignored) {}
-        }
+        closePort();
     }
 }
