@@ -9,6 +9,8 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.kgjr.aurdinoexperiment.ide.EditorActivity;
+
 public class MainActivity extends AppCompatActivity {
 
     @Override
@@ -24,5 +26,8 @@ public class MainActivity extends AppCompatActivity {
 
         findViewById(R.id.serialTestButton).setOnClickListener(v ->
                 startActivity(new Intent(this, SerialTestActivity.class)));
+
+        findViewById(R.id.editorButton).setOnClickListener(v ->
+                startActivity(new Intent(this, EditorActivity.class)));
     }
 }

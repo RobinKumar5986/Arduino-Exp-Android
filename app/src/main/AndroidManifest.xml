@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -12,16 +13,47 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AurdinoExperiment">
+        <!--
+            NOTE: do NOT add android:extractNativeLibs here.
+
+            The AVR toolchain executables ship as lib*.so files in jniLibs and
+            must be unpacked into nativeLibraryDir at install time, otherwise
+            there is no real file to execve() and every compile dies with
+            ENOENT. That behaviour IS required - but AGP 8+ rejects the
+            manifest attribute outright:
+
+              > android:extractNativeLibs is set to "true" in
+              > AndroidManifest.xml. Avoid setting it explicitly, and instead
+              > set android.packagingOptions.jniLibs.useLegacyPackaging
+
+            So it goes in app/build.gradle(.kts) instead, and AGP writes the
+            attribute into the merged manifest for you:
+
+                packaging {
+                    jniLibs {
+                        useLegacyPackaging = true
+                        keepDebugSymbols += "**/arm64-v8a/libavr_*.so"
+                    }
+                }
+        -->
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".SerialTestActivity" android:exported="false" />
-    </application>
 
+        <activity
+            android:name=".SerialTestActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ide.EditorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
 </manifest>
