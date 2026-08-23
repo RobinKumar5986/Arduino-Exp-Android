@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call flow — com.kgjr.aurdinoexperiment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --paper:#E9EEF0; --panel:#FFFFFF; --ink:#12212A; --ink2:#4C6570; --ink3:#7C949D;
+  --rule:#C0CFD5; --compile:#0B6C88; --upload:#9A5B12;
+  --mono:'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.001ms !important}}
+body{
+  background:
+    linear-gradient(var(--rule) 1px, transparent 1px) 0 0/100% 26px,
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px) 0 0/26px 100%,
+    var(--paper);
+  background-blend-mode:soft-light,soft-light,normal;
+  color:var(--ink); font-family:var(--mono); font-size:15px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1140px;margin:0 auto;padding:44px 22px 90px}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+button:focus-visible{outline:2px solid var(--compile);outline-offset:2px}
+header{margin-bottom:30px}
+.kicker{font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3);margin-bottom:9px}
+h1{font-size:25px;font-weight:600;letter-spacing:-.01em;line-height:1.25;margin-bottom:8px}
+.sub{font-size:13.5px;color:var(--ink2);max-width:660px}
+.rref{display:inline-block;min-width:17px;height:17px;padding:0 3px;border:1.4px solid var(--compile);
+  border-radius:9px;text-align:center;line-height:14px;font-size:10.5px;color:var(--compile);
+  font-weight:600;vertical-align:1px}
+/* ---- controls ---- */
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:26px 0 16px}
+.seg{display:flex;border:1px solid var(--rule);border-radius:5px;overflow:hidden;background:var(--panel)}
+.seg button{padding:8px 17px;font-size:12.5px;font-weight:500;color:var(--ink2);
+  border-right:1px solid var(--rule);transition:background .15s,color .15s}
+.seg button:last-child{border-right:none}
+.seg button[aria-selected="true"]{background:var(--compile);color:#fff}
+.seg[data-for="path"] button[aria-selected="true"].up{background:var(--upload)}
+.toggle{display:flex;align-items:center;gap:8px;padding:8px 15px;border:1px solid var(--rule);
+  border-radius:5px;background:var(--panel);font-size:12.5px;color:var(--ink2)}
+.toggle .dot{width:9px;height:9px;border-radius:50%;background:var(--rule);transition:background .18s}
+.toggle[aria-pressed="true"]{color:var(--ink)}
+.toggle[aria-pressed="true"] .dot{background:var(--compile)}
+/* ---- legend ---- */
+.legend{display:flex;flex-wrap:wrap;gap:7px 20px;padding:13px 16px;border:1px solid var(--rule);
+  border-radius:5px;background:var(--panel);margin-bottom:22px;font-size:11.5px;color:var(--ink2)}
+.lg{display:flex;align-items:center;gap:7px}
+.sw{width:24px;height:14px;border-radius:3px;flex-shrink:0}
+.sw.file{background:var(--panel);border:1px solid var(--rule);box-shadow:inset 3px 0 0 var(--compile)}
+.sw.step{background:#F4F8F9;border:1px solid var(--rule)}
+.sw.exec{background:rgba(11,108,136,.13);border:1px solid var(--compile)}
+.sw.out{background:var(--panel);border:1px solid var(--compile);border-radius:7px}
+.sw.reads{border:1px dashed var(--ink3)}
+.ring{width:15px;height:15px;border-radius:50%;border:1.4px solid var(--compile);flex-shrink:0}
+/* ---- diagram frame ---- */
+.frame{border:1px solid var(--rule);border-radius:6px;background:var(--panel);overflow:hidden}
+.frame-head{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:11px 16px;border-bottom:1px solid var(--rule);font-size:11.5px;color:var(--ink3);
+  letter-spacing:.06em;text-transform:uppercase}
+.cols{display:flex;gap:0;font-size:10.5px;letter-spacing:.05em;color:var(--ink3);
+  border-bottom:1px solid var(--rule);background:#F4F8F9}
+.cols span{padding:7px 16px;border-right:1px solid var(--rule)}
+.cols span:nth-child(1){width:290px;flex-shrink:0}
+.cols span:nth-child(2){width:388px;flex-shrink:0}
+.cols span:last-child{border-right:none;flex:1}
+.scroll{overflow-x:auto;padding:6px 10px 14px}
+.scroll svg{display:block;min-width:820px}
+.view[hidden]{display:none}
+.mainonly .scroll svg{min-width:0}
+.hint{font-size:11.5px;color:var(--ink3);margin-top:12px}
+@media (max-width:820px){ .cols{display:none} .wrap{padding:30px 14px 70px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">com.kgjr.aurdinoexperiment · call flow</div>
+  <h1>Which file runs next, from the tap to the chip</h1>
+  <p class="sub">The numbered trunk is the main path — read it top to bottom. Branches to the
+  right are what happens inside each file. A ring like <span class="rref">3</span> means that
+  step jumps to trunk node 3; <span class="rref">U3</span> means node 3 on the other path.</p>
+</header>
+
+<div class="bar">
+  <div class="seg" data-for="path" role="tablist" aria-label="Which path to show">
+    <button role="tab" data-path="compile" aria-selected="true">Tap Compile</button>
+    <button role="tab" data-path="upload" class="up" aria-selected="false">Tap Upload</button>
+  </div>
+  <button class="toggle" id="subToggle" aria-pressed="true">
+    <span class="dot"></span><span>Show what happens inside each file</span>
+  </button>
+</div>
+
+<div class="legend" id="legend">
+  <div class="lg"><span class="sw file"></span>file on the main path</div>
+  <div class="lg"><span class="sw step"></span>a step inside that file</div>
+  <div class="lg"><span class="sw exec"></span>native binary / OS call</div>
+  <div class="lg"><span class="sw out"></span>file produced</div>
+  <div class="lg"><span class="sw reads"></span>data it reads</div>
+  <div class="lg"><span class="ring"></span>jumps to that trunk node</div>
+</div>
+<div class="view" id="v-compile_full" >
+  <div class="frame">
+    <div class="frame-head"><span>Tap Compile — full call flow</span><span>6 trunk nodes · 5 build stages</span></div>
+    <div class="cols"><span>main path · file</span><span>inside that file · in order</span><span>what it touches</span></div>
+    <div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 1623" width="100%" preserveAspectRatio="xMinYMin meet" role="img" aria-label="call flow diagram" class="flow">
+<defs><marker id="ahcf" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#0B6C88"/></marker></defs>
+<path d="M14,47 L14,1521" stroke="#0B6C88" stroke-width="1.6" fill="none" stroke-opacity="0.55"/>
+<path d="M14,47 L31,47" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<path d="M14,143.0 L14,153.0" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<rect class="nb" x="32" y="26" width="250" height="172" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="26" width="3.5" height="172" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="47" r="11" fill="#0B6C88"/>
+<text x="54" y="47" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">1</text>
+<text x="73" y="47" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">EditorActivity</text>
+<text x="73" y="67" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">you tap Compile</text>
+<path d="M282,50 L299,50 L299,172.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,52.0 L318,52.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="52.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="26" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="44.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">onCreate()</text>
+<text x="329" y="59.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">restore last sketch, install SDK in background</text>
+<path d="M670,52.0 L687,52.0 L687,52.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,52.0 L706,52.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="36.5" width="322" height="31" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="52.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">avr-sdk.zip → filesDir (AvrSdk)</text>
+<path d="M299,112.0 L318,112.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="112.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="86" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="104.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">compile(thenUpload) on a worker thread</text>
+<text x="329" y="119.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">UI stays responsive; Handler posts the log back</text>
+<path d="M299,172.0 L318,172.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="172.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="146" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="164.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">calls ArduinoCompiler.build()</text>
+<text x="329" y="179.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">blocks until the whole build finishes</text>
+<circle cx="653" cy="172.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="172.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">2</text>
+<path d="M14,249 L31,249" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<path d="M14,583.0 L14,593.0" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<rect class="nb" x="32" y="228" width="250" height="648" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="228" width="3.5" height="648" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="249" r="11" fill="#0B6C88"/>
+<text x="54" y="249" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">2</text>
+<text x="73" y="249" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">ArduinoCompiler</text>
+<text x="73" y="269" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">orchestrates 5 stages, in</text>
+<text x="73" y="284" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">order</text>
+<path d="M282,252 L299,252 L299,850.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,254.0 L318,254.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="254.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="228" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="246.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">guard · Toolchain.isComplete()</text>
+<text x="329" y="261.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">all 4 binaries present AND executable</text>
+<path d="M670,254.0 L687,254.0 L687,254.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,254.0 L706,254.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="238.5" width="322" height="31" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="254.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">nativeLibraryDir/lib*.so</text>
+<path d="M299,314.0 L318,314.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="314.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="288" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="306.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">guard · AvrSdk.isInstalled()</text>
+<text x="329" y="321.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">probes a real file in every subtree</text>
+<path d="M670,314.0 L687,314.0 L687,314.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,314.0 L706,314.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="298.5" width="322" height="31" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="314.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">headers, core.a, crt, ldscripts</text>
+<path d="M299,374.0 L318,374.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="374.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="348" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="366.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">stage 1 · preprocess</text>
+<text x="329" y="381.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">hand off to SketchPreprocessor</text>
+<circle cx="653" cy="374.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="374.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">3</text>
+<path d="M670,374.0 L687,374.0 L687,374.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,374.0 L706,374.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="358.5" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#0B6C88" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="374.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">sketch.cpp</text>
+<path d="M299,442.0 L318,442.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="442.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="408" width="352" height="68" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="434.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">stage 2 · cc1plusCommand() → run</text>
+<text x="329" y="449.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">flags copied from avr-g++ -v</text>
+<circle cx="653" cy="442.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="442.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">5</text>
+<path d="M670,442.0 L687,442.0 L687,460.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,423.5 L706,423.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="408" width="322" height="31" rx="3" fill="#0B6C88" fill-opacity="0.13" stroke="#0B6C88" stroke-width="1"/>
+<text x="717" y="423.5" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">libavr_cc1plus.so</text>
+<path d="M687,460.5 L706,460.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="445" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#0B6C88" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="460.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">sketch.s</text>
+<path d="M299,518.0 L318,518.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="518.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="484" width="352" height="68" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="510.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">stage 3 · assemble</text>
+<text x="329" y="525.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">same runner, different binary</text>
+<circle cx="653" cy="518.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="518.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">5</text>
+<path d="M670,518.0 L687,518.0 L687,536.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,499.5 L706,499.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="484" width="322" height="31" rx="3" fill="#0B6C88" fill-opacity="0.13" stroke="#0B6C88" stroke-width="1"/>
+<text x="717" y="499.5" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">libavr_as.so</text>
+<path d="M687,536.5 L706,536.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="521" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#0B6C88" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="536.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">sketch.o</text>
+<path d="M299,620.0 L318,620.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="620.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="560" width="352" height="120" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="612.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">stage 4 · linkCommand() → run</text>
+<text x="329" y="627.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">-T ldscript passed explicitly</text>
+<circle cx="653" cy="620.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="620.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">5</text>
+<path d="M670,620.0 L687,620.0 L687,664.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,575.5 L706,575.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="560" width="322" height="31" rx="3" fill="#0B6C88" fill-opacity="0.13" stroke="#0B6C88" stroke-width="1"/>
+<text x="717" y="575.5" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">libavr_ld.so</text>
+<path d="M687,620.0 L706,620.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="597" width="322" height="46" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="612.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">crt → sketch.o → core.a → libm (order</text>
+<text x="717" y="627.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">matters)</text>
+<path d="M687,664.5 L706,664.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="649" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#0B6C88" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="664.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">sketch.elf</text>
+<path d="M299,722.0 L318,722.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="722.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="688" width="352" height="68" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="714.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">stage 5 · objcopy</text>
+<text x="329" y="729.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">strip to a flashable image</text>
+<circle cx="653" cy="722.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="722.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">5</text>
+<path d="M670,722.0 L687,722.0 L687,740.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,703.5 L706,703.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="688" width="322" height="31" rx="3" fill="#0B6C88" fill-opacity="0.13" stroke="#0B6C88" stroke-width="1"/>
+<text x="717" y="703.5" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">libavr_objcopy.so</text>
+<path d="M687,740.5 L706,740.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="725" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#0B6C88" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="740.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">sketch.hex</text>
+<path d="M299,790.0 L318,790.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="790.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="764" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="782.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">size report · IntelHexSize</text>
+<text x="329" y="797.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">reuses the flashing parser to count bytes</text>
+<circle cx="653" cy="790.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="790.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">4</text>
+<path d="M670,790.0 L687,790.0 L687,790.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,790.0 L706,790.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="774.5" width="322" height="31" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="790.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">Board.UNO — 32,256 B usable, mcu, F_CPU</text>
+<path d="M299,850.0 L318,850.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="850.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="824" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="842.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">return BuildResult.success(hex)</text>
+<text x="329" y="857.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">on failure: cleanCompilerOutput() first</text>
+<path d="M14,927 L31,927" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<path d="M14,1045.5 L14,1055.5" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<rect class="nb" x="32" y="906" width="250" height="217" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="906" width="3.5" height="217" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="927" r="11" fill="#0B6C88"/>
+<text x="54" y="927" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">3</text>
+<text x="73" y="927" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">SketchPreprocessor</text>
+<text x="73" y="947" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">called from stage 1</text>
+<path d="M282,930 L299,930 L299,1097.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,924.5 L318,924.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="924.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="906" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="924.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">add #include &lt;Arduino.h&gt; if absent</text>
+<path d="M299,977.0 L318,977.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="977.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="951" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="969.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">blank comments + strings in a scratch copy</text>
+<text x="329" y="984.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">scan-only — your real strings are untouched</text>
+<path d="M299,1037.0 L318,1037.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1037.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1011" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1029.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">scan for functions, brace-depth aware</text>
+<text x="329" y="1044.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">skips templates — same limit as the real IDE</text>
+<path d="M299,1097.0 L318,1097.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1097.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1071" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1089.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">emit forward declarations + #line</text>
+<text x="329" y="1104.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">errors still point at your real line number</text>
+<path d="M670,1097.0 L687,1097.0 L687,1097.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,1097.0 L706,1097.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="1081.5" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#0B6C88" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="1097.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">sketch.cpp</text>
+<path d="M14,1174 L31,1174" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<path d="M14,1211.5 L14,1221.5" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<rect class="nb" x="32" y="1153" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="1153" width="3.5" height="55" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="1174" r="11" fill="#0B6C88"/>
+<text x="54" y="1174" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">4</text>
+<text x="73" y="1174" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">IntelHexSize → IntelHex</text>
+<text x="73" y="1194" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">called from the size report</text>
+<path d="M282,1177 L299,1177 L299,1179.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,1179.0 L318,1179.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1179.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1153" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1171.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">IntelHex.parse(), read highestAddress</text>
+<text x="329" y="1186.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">one parser serves both size and flashing</text>
+<circle cx="653" cy="1179.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="1179.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">U3</text>
+<path d="M14,1259 L31,1259" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<path d="M14,1385.0 L14,1395.0" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<rect class="nb" x="32" y="1238" width="250" height="232" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="1238" width="3.5" height="232" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="1259" r="11" fill="#0B6C88"/>
+<text x="54" y="1259" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">5</text>
+<text x="73" y="1259" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">ProcessRunner</text>
+<text x="73" y="1279" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">called 4×, once per binary</text>
+<path d="M282,1262 L299,1262 L299,1451.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,1264.0 L318,1264.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1264.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1238" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1256.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">set TMPDIR / HOME / LC_ALL</text>
+<text x="329" y="1271.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">the inherited env is not writable</text>
+<path d="M299,1331.5 L318,1331.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1331.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1298" width="352" height="67" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1316.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">drain stdout+stderr on its own thread</text>
+<text x="329" y="1331.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">redirectErrorStream, so one pipe cannot</text>
+<text x="329" y="1346.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">deadlock</text>
+<path d="M299,1399.0 L318,1399.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1399.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1373" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1391.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">poll exitValue() with backoff</text>
+<text x="329" y="1406.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">waitFor(timeout) needs API 26</text>
+<path d="M299,1451.5 L318,1451.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1451.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1433" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1451.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">return exit code, output, elapsed ms</text>
+<path d="M14,1521 L31,1521" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcf)"/>
+<rect class="nb" x="32" y="1500" width="250" height="97" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="1500" width="3.5" height="97" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="1521" r="11" fill="#0B6C88"/>
+<text x="54" y="1521" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">6</text>
+<text x="73" y="1521" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">back in EditorActivity</text>
+<text x="73" y="1541" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">build finished</text>
+<path d="M282,1524 L299,1524 L299,1571.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,1518.5 L318,1518.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1518.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1500" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1518.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">append log · 1,048 bytes in 189 ms</text>
+<path d="M299,1571.0 L318,1571.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1571.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1545" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1563.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">if Upload was tapped → Uploader</text>
+<text x="329" y="1578.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">otherwise stop here</text>
+<circle cx="653" cy="1571.0" r="9.5" fill="none" stroke="#0B6C88" stroke-width="1.4"/>
+<text x="653" y="1571.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#0B6C88">U2</text>
+</svg></div>
+  </div>
+</div>
+<div class="view" id="v-compile_main" hidden>
+  <div class="frame">
+    <div class="frame-head"><span>Tap Compile — main path only</span><span>6 trunk nodes</span></div>
+    
+    <div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 477" width="100%" preserveAspectRatio="xMinYMin meet" role="img" aria-label="call flow diagram" class="flow">
+<defs><marker id="ahcm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#0B6C88"/></marker></defs>
+<path d="M14,47 L14,417" stroke="#0B6C88" stroke-width="1.6" fill="none" stroke-opacity="0.55"/>
+<path d="M14,47 L31,47" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<path d="M14,77.5 L14,87.5" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<rect class="nb" x="32" y="26" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="26" width="3.5" height="55" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="47" r="11" fill="#0B6C88"/>
+<text x="54" y="47" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">1</text>
+<text x="73" y="47" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">EditorActivity</text>
+<text x="73" y="67" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">you tap Compile</text>
+<path d="M14,118 L31,118" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<path d="M14,156.0 L14,166.0" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<rect class="nb" x="32" y="97" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="97" width="3.5" height="70" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="118" r="11" fill="#0B6C88"/>
+<text x="54" y="118" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">2</text>
+<text x="73" y="118" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">ArduinoCompiler</text>
+<text x="73" y="138" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">orchestrates 5 stages, in</text>
+<text x="73" y="153" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">order</text>
+<path d="M14,204 L31,204" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<path d="M14,234.5 L14,244.5" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<rect class="nb" x="32" y="183" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="183" width="3.5" height="55" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="204" r="11" fill="#0B6C88"/>
+<text x="54" y="204" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">3</text>
+<text x="73" y="204" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">SketchPreprocessor</text>
+<text x="73" y="224" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">called from stage 1</text>
+<path d="M14,275 L31,275" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<path d="M14,305.5 L14,315.5" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<rect class="nb" x="32" y="254" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="254" width="3.5" height="55" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="275" r="11" fill="#0B6C88"/>
+<text x="54" y="275" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">4</text>
+<text x="73" y="275" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">IntelHexSize → IntelHex</text>
+<text x="73" y="295" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">called from the size report</text>
+<path d="M14,346 L31,346" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<path d="M14,376.5 L14,386.5" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<rect class="nb" x="32" y="325" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="325" width="3.5" height="55" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="346" r="11" fill="#0B6C88"/>
+<text x="54" y="346" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">5</text>
+<text x="73" y="346" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">ProcessRunner</text>
+<text x="73" y="366" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">called 4×, once per binary</text>
+<path d="M14,417 L31,417" stroke="#0B6C88" stroke-width="1.6" fill="none" marker-end="url(#ahcm)"/>
+<rect class="nb" x="32" y="396" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="396" width="3.5" height="55" rx="1.75" fill="#0B6C88"/>
+<circle cx="54" cy="417" r="11" fill="#0B6C88"/>
+<text x="54" y="417" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">6</text>
+<text x="73" y="417" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">back in EditorActivity</text>
+<text x="73" y="437" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">build finished</text>
+</svg></div>
+  </div>
+</div>
+<div class="view" id="v-upload_full" hidden>
+  <div class="frame">
+    <div class="frame-head"><span>Tap Upload — full call flow</span><span>6 trunk nodes · STK500v1</span></div>
+    <div class="cols"><span>main path · file</span><span>inside that file · in order</span><span>what it touches</span></div>
+    <div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 1583" width="100%" preserveAspectRatio="xMinYMin meet" role="img" aria-label="call flow diagram" class="flow">
+<defs><marker id="ahuf" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#9A5B12"/></marker></defs>
+<path d="M14,47 L14,1508" stroke="#9A5B12" stroke-width="1.6" fill="none" stroke-opacity="0.55"/>
+<path d="M14,47 L31,47" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<path d="M14,143.0 L14,153.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<rect class="nb" x="32" y="26" width="250" height="172" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="26" width="3.5" height="172" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="47" r="11" fill="#9A5B12"/>
+<text x="54" y="47" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">1</text>
+<text x="73" y="47" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">EditorActivity</text>
+<text x="73" y="67" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">you tap Upload</text>
+<path d="M282,50 L299,50 L299,172.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,52.0 L318,52.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="52.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="26" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="44.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">compile(thenUpload = true)</text>
+<text x="329" y="59.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">compile path runs first, all 6 steps</text>
+<path d="M299,112.0 L318,112.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="112.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="86" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="104.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">no toolchain? flash blink.hex instead</text>
+<text x="329" y="119.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">logged as a warning, not a silent success</text>
+<path d="M299,172.0 L318,172.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="172.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="146" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="164.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">calls Uploader.upload(hex)</text>
+<text x="329" y="179.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">still on the worker thread</text>
+<circle cx="653" cy="172.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="172.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">2</text>
+<path d="M14,249 L31,249" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<path d="M14,443.0 L14,453.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<rect class="nb" x="32" y="228" width="250" height="368" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="228" width="3.5" height="368" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="249" r="11" fill="#9A5B12"/>
+<text x="54" y="249" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">2</text>
+<text x="73" y="249" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">Uploader</text>
+<text x="73" y="269" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">find · permit · open ·</text>
+<text x="73" y="284" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">flash</text>
+<path d="M282,252 L299,252 L299,570.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,254.0 L318,254.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="254.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="228" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="246.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">IntelHex.parse(hexFile)</text>
+<text x="329" y="261.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">hex text → raw flash bytes</text>
+<circle cx="653" cy="254.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="254.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">3</text>
+<path d="M670,254.0 L687,254.0 L687,254.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,254.0 L706,254.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="238.5" width="322" height="31" rx="14" fill="#FFFFFF" stroke="#9A5B12" stroke-width="1" stroke-dasharray="1 0"/>
+<text x="717" y="254.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">byte[] trimmed to highestAddress</text>
+<path d="M299,314.0 L318,314.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="314.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="288" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="306.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">UsbSerialProber.findAllDrivers()</text>
+<text x="329" y="321.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">no device → fail with a readable message</text>
+<path d="M670,314.0 L687,314.0 L687,314.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,314.0 L706,314.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="298.5" width="322" height="31" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="314.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">VID 2341 / PID 0043</text>
+<path d="M299,382.0 L318,382.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="382.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="348" width="352" height="68" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="374.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">permission granted?</text>
+<text x="329" y="389.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">async dialog, blocking caller</text>
+<path d="M670,382.0 L687,382.0 L687,400.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,363.5 L706,363.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="348" width="322" height="31" rx="3" fill="#9A5B12" fill-opacity="0.13" stroke="#9A5B12" stroke-width="1"/>
+<text x="717" y="363.5" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">PendingIntent + BroadcastReceiver</text>
+<path d="M687,400.5 L706,400.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="385" width="322" height="31" rx="3" fill="#9A5B12" fill-opacity="0.13" stroke="#9A5B12" stroke-width="1"/>
+<text x="717" y="400.5" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">CountDownLatch, 60 s timeout</text>
+<path d="M299,450.0 L318,450.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="450.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="424" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="442.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">driver.open(connection)</text>
+<text x="329" y="457.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">wrap the port in UsbSerialLink</text>
+<circle cx="653" cy="450.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="450.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">4</text>
+<path d="M299,510.0 L318,510.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="510.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="484" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="502.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">new Stk500Programmer(link, board).flash()</text>
+<text x="329" y="517.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">hands over the whole byte array</text>
+<circle cx="653" cy="510.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="510.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">5</text>
+<path d="M670,510.0 L687,510.0 L687,510.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,510.0 L706,510.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="494.5" width="322" height="31" rx="3" fill="none" stroke="#7C949D" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="717" y="510.0" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">Board.UNO — baud, page size, signature</text>
+<path d="M299,570.0 L318,570.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="570.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="544" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="562.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">link.close() in a finally block</text>
+<text x="329" y="577.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">port is released even on failure</text>
+<path d="M14,647 L31,647" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<path d="M14,735.5 L14,745.5" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<rect class="nb" x="32" y="626" width="250" height="157" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="626" width="3.5" height="157" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="647" r="11" fill="#9A5B12"/>
+<text x="54" y="647" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">3</text>
+<text x="73" y="647" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">IntelHex</text>
+<text x="73" y="667" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">no Android APIs — testable</text>
+<text x="73" y="682" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">on the host</text>
+<path d="M282,650 L299,650 L299,764.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,652.0 L318,652.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="652.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="626" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="644.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">prefill 256 KB with 0xFF</text>
+<text x="329" y="659.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">matches erased flash, no special-casing</text>
+<path d="M299,712.0 L318,712.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="712.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="686" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="704.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">per record: verify the checksum</text>
+<text x="329" y="719.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">corrupt file fails here, not on the chip</text>
+<path d="M299,764.5 L318,764.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="764.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="746" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="764.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">require a real EOF record</text>
+<path d="M14,834 L31,834" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<path d="M14,960.0 L14,970.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<rect class="nb" x="32" y="813" width="250" height="232" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="813" width="3.5" height="232" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="834" r="11" fill="#9A5B12"/>
+<text x="54" y="834" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">4</text>
+<text x="73" y="834" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">UsbSerialLink</text>
+<text x="73" y="854" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">the only file that touches</text>
+<text x="73" y="869" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">USB</text>
+<path d="M282,837 L299,837 L299,1019.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,846.5 L318,846.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="846.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="813" width="352" height="67" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="831.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">implements SerialLink</text>
+<text x="329" y="846.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">the interface Stk500Programmer depends on, so</text>
+<text x="329" y="861.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">it can be faked in tests</text>
+<path d="M299,906.5 L318,906.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="906.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="888" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="906.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">setBaudRate(115200), setDTR, setRTS</text>
+<path d="M299,959.0 L318,959.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="959.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="933" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="951.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">read into a 512-byte buffer</text>
+<text x="329" y="966.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">a 1-byte read mangled whole bulk packets</text>
+<path d="M299,1019.0 L318,1019.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1019.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="993" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1011.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">purgeInput() — drain in a loop</text>
+<text x="329" y="1026.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">stale bytes would poison sync</text>
+<path d="M14,1096 L31,1096" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<path d="M14,1297.0 L14,1307.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<rect class="nb" x="32" y="1075" width="250" height="382" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="1075" width="3.5" height="382" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="1096" r="11" fill="#9A5B12"/>
+<text x="54" y="1096" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">5</text>
+<text x="73" y="1096" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">Stk500Programmer</text>
+<text x="73" y="1116" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">STK500v1, what avrdude</text>
+<text x="73" y="1131" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">speaks</text>
+<path d="M282,1099 L299,1099 L299,1438.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M299,1101.0 L318,1101.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1101.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1075" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1093.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">pulseReset() — toggle DTR</text>
+<text x="329" y="1108.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">capacitor pulses RESET → bootloader, ~1 s</text>
+<circle cx="653" cy="1101.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="1101.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">4</text>
+<path d="M299,1161.0 L318,1161.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1161.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1135" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1153.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">sync() — up to 12 attempts</text>
+<text x="329" y="1168.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">second reset pulse at attempt 6 for clones</text>
+<circle cx="653" cy="1161.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="1161.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">4</text>
+<path d="M299,1213.5 L318,1213.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1213.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1195" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1213.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">enterProgMode()</text>
+<path d="M299,1266.0 L318,1266.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1266.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1240" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1258.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">getSignature(), compare to board</text>
+<text x="329" y="1273.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">wrong chip stops here</text>
+<path d="M299,1326.0 L318,1326.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1326.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1300" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1318.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">per 128-byte page: loadAddress(addr &gt;&gt; 1)</text>
+<text x="329" y="1333.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">STK500 counts 16-bit words, not bytes</text>
+<circle cx="653" cy="1326.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="1326.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">4</text>
+<path d="M299,1386.0 L318,1386.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1386.0" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1360" width="352" height="52" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1378.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">programPage() — write the page</text>
+<text x="329" y="1393.5" dominant-baseline="central" font-size="11.5" font-weight="400" fill="#4C6570">every exchange: cmd → 0x14 → body → 0x10</text>
+<circle cx="653" cy="1386.0" r="9.5" fill="none" stroke="#9A5B12" stroke-width="1.4"/>
+<text x="653" y="1386.0" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="600" fill="#9A5B12">4</text>
+<path d="M670,1386.0 L687,1386.0 L687,1386.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<path d="M687,1386.0 L706,1386.0" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<rect class="nb" x="706" y="1370.5" width="322" height="31" rx="3" fill="#9A5B12" fill-opacity="0.13" stroke="#9A5B12" stroke-width="1"/>
+<text x="717" y="1386.0" dominant-baseline="central" font-size="11.5" font-weight="500" fill="#12212A">command() — one method, 7 operations</text>
+<path d="M299,1438.5 L318,1438.5" stroke="#C0CFD5" stroke-width="1.2" fill="none"/>
+<circle cx="299" cy="1438.5" r="2.4" fill="#C0CFD5"/>
+<rect class="nb" x="318" y="1420" width="352" height="37" rx="3" fill="#F4F8F9" stroke="#C0CFD5" stroke-width="1"/>
+<text x="329" y="1438.5" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#12212A">leaveProgMode()</text>
+<path d="M14,1508 L31,1508" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahuf)"/>
+<rect class="nb" x="32" y="1487" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="1487" width="3.5" height="70" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="1508" r="11" fill="#9A5B12"/>
+<text x="54" y="1508" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">6</text>
+<text x="73" y="1508" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">Arduino Uno</text>
+<text x="73" y="1528" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">bootloader hands control to</text>
+<text x="73" y="1543" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">your sketch</text>
+</svg></div>
+  </div>
+</div>
+<div class="view" id="v-upload_main" hidden>
+  <div class="frame">
+    <div class="frame-head"><span>Tap Upload — main path only</span><span>6 trunk nodes</span></div>
+    
+    <div class="scroll"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 537" width="100%" preserveAspectRatio="xMinYMin meet" role="img" aria-label="call flow diagram" class="flow">
+<defs><marker id="ahum" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#9A5B12"/></marker></defs>
+<path d="M14,47 L14,462" stroke="#9A5B12" stroke-width="1.6" fill="none" stroke-opacity="0.55"/>
+<path d="M14,47 L31,47" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<path d="M14,77.5 L14,87.5" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<rect class="nb" x="32" y="26" width="250" height="55" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="26" width="3.5" height="55" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="47" r="11" fill="#9A5B12"/>
+<text x="54" y="47" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">1</text>
+<text x="73" y="47" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">EditorActivity</text>
+<text x="73" y="67" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">you tap Upload</text>
+<path d="M14,118 L31,118" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<path d="M14,156.0 L14,166.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<rect class="nb" x="32" y="97" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="97" width="3.5" height="70" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="118" r="11" fill="#9A5B12"/>
+<text x="54" y="118" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">2</text>
+<text x="73" y="118" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">Uploader</text>
+<text x="73" y="138" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">find · permit · open ·</text>
+<text x="73" y="153" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">flash</text>
+<path d="M14,204 L31,204" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<path d="M14,242.0 L14,252.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<rect class="nb" x="32" y="183" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="183" width="3.5" height="70" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="204" r="11" fill="#9A5B12"/>
+<text x="54" y="204" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">3</text>
+<text x="73" y="204" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">IntelHex</text>
+<text x="73" y="224" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">no Android APIs — testable</text>
+<text x="73" y="239" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">on the host</text>
+<path d="M14,290 L31,290" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<path d="M14,328.0 L14,338.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<rect class="nb" x="32" y="269" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="269" width="3.5" height="70" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="290" r="11" fill="#9A5B12"/>
+<text x="54" y="290" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">4</text>
+<text x="73" y="290" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">UsbSerialLink</text>
+<text x="73" y="310" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">the only file that touches</text>
+<text x="73" y="325" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">USB</text>
+<path d="M14,376 L31,376" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<path d="M14,414.0 L14,424.0" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<rect class="nb" x="32" y="355" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="355" width="3.5" height="70" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="376" r="11" fill="#9A5B12"/>
+<text x="54" y="376" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">5</text>
+<text x="73" y="376" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">Stk500Programmer</text>
+<text x="73" y="396" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">STK500v1, what avrdude</text>
+<text x="73" y="411" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">speaks</text>
+<path d="M14,462 L31,462" stroke="#9A5B12" stroke-width="1.6" fill="none" marker-end="url(#ahum)"/>
+<rect class="nb" x="32" y="441" width="250" height="70" rx="4" fill="#FFFFFF" stroke="#C0CFD5" stroke-width="1"/>
+<rect x="32" y="441" width="3.5" height="70" rx="1.75" fill="#9A5B12"/>
+<circle cx="54" cy="462" r="11" fill="#9A5B12"/>
+<text x="54" y="462" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="600" fill="#FFFFFF">6</text>
+<text x="73" y="462" dominant-baseline="central" font-size="14" font-weight="600" fill="#12212A">Arduino Uno</text>
+<text x="73" y="482" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">bootloader hands control to</text>
+<text x="73" y="497" dominant-baseline="central" font-size="12" font-weight="400" fill="#4C6570">your sketch</text>
+</svg></div>
+  </div>
+</div>
+<p class="hint">Wide diagram — scroll it sideways, or switch off
+&ldquo;what happens inside each file&rdquo; for just the trunk.</p>
+</div>
+<script>
+var subs = true, path = 'compile';
+function apply(){
+  ['compile','upload'].forEach(function(p){
+    ['full','main'].forEach(function(m){
+      var el = document.getElementById('v-' + p + '_' + m);
+      var want = (p === path) && (m === (subs ? 'full' : 'main'));
+      el.hidden = !want;
+    });
+  });
+  document.querySelectorAll('.seg[data-for="path"] button').forEach(function(b){
+    b.setAttribute('aria-selected', b.dataset.path === path);
+  });
+  var t = document.getElementById('subToggle');
+  t.setAttribute('aria-pressed', subs);
+  document.querySelector('.wrap').classList.toggle('mainonly', !subs);
+  var accent = path === 'compile' ? 'var(--compile)' : 'var(--upload)';
+  document.documentElement.style.setProperty('--accent', accent);
+  document.getElementById('legend').style.display = subs ? 'flex' : 'none';
+}
+document.querySelectorAll('.seg[data-for="path"] button').forEach(function(b){
+  b.addEventListener('click', function(){ path = b.dataset.path; apply(); });
+});
+document.getElementById('subToggle').addEventListener('click', function(){
+  subs = !subs; apply();
+});
+apply();
+</script>
+</body>
+</html>
